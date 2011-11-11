@@ -1,4 +1,4 @@
-package gearman
+package goman
 
 import (
 	"testing"
@@ -37,16 +37,29 @@ func TestOne(t *testing.T) {
 	if c == nil {
 		t.Fatal("Got nil client")
 	}
-	res := c.Call("geturl", []byte("http://google.com"))
+	res, err := c.Call("geturl", []byte("http://google.com"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(res) == 0 {
 		t.Fatal("No response")
 	}
 	if !strings.Contains ( string(res), "Feeling Lucky" )  {
 		t.Fatal("Bad response")
 	}
-	res = c.CallBackground("geturl", []byte("http://google.com"))
+	res, err = c.CallBackground("geturl", []byte("http://google.com"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(res) == 0 {
 		t.Fatal("No response")
+	}
+	status, err := c.GetStatus(res);
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Known || !status.Running {
+		t.Fatal("Bad status")
 	}
 }
 
@@ -68,7 +81,10 @@ func TestMore ( t *testing.T ) {
 	if c == nil {
 		t.Fatal("Got nil client")
 	}
-	res := c.Call("geturl", []byte("http://google.com"))
+	res, err := c.Call("geturl", []byte("http://google.com"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(res) == 0 {
 		t.Fatal("No response")
 	}

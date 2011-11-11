@@ -17,37 +17,40 @@
 //        ECHO_RES = 17                    // => [ 'O',  "echo_res" ],    # J->? TEXT
 
 //        ERROR = 19                       // => [ 'O',  "error" ],       # J->? ERRCODE[0]ERR_T
-package gearman
+package goman
 
 import (
-	"net"
-	"io"
-	"os"
-	"time"
 	"bytes"
+	"fmt"
+	"io"
+	"net"
+	"os"
 	"rand"
+	"strconv"
+	"time"
 )
 
-func (c *client) Call(method string, data []byte) []byte {
+func (c *client) Call(method string, data []byte) ([]byte, os.Error) {
 	return c.call(method, data, false, false, nil)
 }
 
-func (c *client) CallHighPriority(method string, data []byte) []byte {
+func (c *client) CallHighPriority(method string, data []byte) ([]byte, os.Error) {
 	return c.call(method, data, true, false, nil )
 }
 
-func (c *client) CallBackground(method string, data []byte) []byte {
+func (c *client) CallBackground(method string, data []byte) ([]byte, os.Error) {
 	return c.call ( method, data, false, true, nil )
 }
 
-func (c *client) CallWithProgress(method string, data []byte, progress ProgressHandler) []byte {
+func (c *client) CallWithProgress(method string, data []byte, progress ProgressHandler) ([]byte, os.Error) {
 	return c.call(method, data, false, false, progress )
 }
 
-func (c *client) CallHighPriorityWithProgress(method string, data []byte, progress ProgressHandler) []byte {	return c.call ( method, data, true, false, progress )
+func (c *client) CallHighPriorityWithProgress(method string, data []byte, progress ProgressHandler) ([]byte, os.Error) {
+	return c.call ( method, data, true, false, progress )
 }
 
-func (c *client) call(method string, data []byte, highprio bool, background bool, progress ProgressHandler) []byte {
+func (c *client) call(method string, data []byte, highprio bool, background bool, progress ProgressHandler) (response []byte, err os.Error) {
 	maxtries := len(c.hosts) * 2
 	var n net.Conn = nil
 	var jobhandle []byte = nil
@@ -60,9 +63,8 @@ func (c *client) call(method string, data []byte, highprio bool, background bool
 		// is this conn alive?
 		n = c.hostState[rnum].conn
 		if n == nil || n.RemoteAddr() == nil {
-			var e os.Error = nil
-			n, e = net.Dial("tcp", c.hosts[rnum])
-			if e != nil {
+			n, err = net.Dial("tcp", c.hosts[rnum])
+			if err != nil {
 				//log.Println ( "finding a job server " + e.String() )
 				continue
 			}
@@ -81,19 +83,17 @@ func (c *client) call(method string, data []byte, highprio bool, background bool
 		if background {
 			job_type = SUBMIT_JOB_BG
 		}
-		_, e := n.Write(make_req(job_type, buf))
-		if e != nil {
+		if _, err = n.Write(make_req(job_type, buf)); err != nil {
 			n.Close()
 			continue
 		}
-		cmd, cmd_len, to, e := read_header(n)
-		if e != nil || to {
+		cmd, cmd_len, to, err := read_header(n)
+		if err != nil || to {
 			n.Close()
 			continue
 		}
 		data := make([]byte, cmd_len)
-		_, e = io.ReadFull(n, data)
-		if e != nil {
+		if _, err = io.ReadFull(n, data); err != nil {
 			n.Close()
 			continue
 		}
@@ -104,19 +104,22 @@ func (c *client) call(method string, data []byte, highprio bool, background bool
 		break
 	}
 	if jobhandle == nil {
-		return nil
+		return
 	}
 
 	if background {
-		return jobhandle
+		response = jobhandle
+		return
 	}
 	
 	for {
-		cmd, cmd_len, to, e := read_header(n)
+		cmd, cmd_len, to, err := read_header(n)
+		if err != nil {
+			return
+		}
 		data := make([]byte, cmd_len)
-		_, e = io.ReadFull(n, data)
-		if e != nil {
-			return nil
+		if _, err = io.ReadFull(n, data); err != nil {
+			return
 		}
 		if to {
 			continue
@@ -124,14 +127,96 @@ func (c *client) call(method string, data []byte, highprio bool, background bool
 		switch cmd {
 		case WORK_COMPLETE:
 			if len(data) == 0 {
-				return nil
+				return
 			}
 			a := bytes.SplitN(data, []byte{0}, 2)
 			if len(a) != 2 {
-				return nil
+				return
 			}
-			return a[1]
+			response = a[1]
+			return
 		}
 	}
-	return nil
+	return
+}
+
+func (c *client) GetStatus(jobhandle []byte) (status *Status, err os.Error) {
+	maxtries := len(c.hosts) * 2
+	var n net.Conn = nil
+	rand.Seed(time.Nanoseconds())
+
+	req := make_req(GET_STATUS, jobhandle)
+
+	// find a jobserver that will handle this method
+	for maxtries > 0 {
+		maxtries--
+		rnum := rand.Intn(len(c.hosts))
+		// is this conn alive?
+		n = c.hostState[rnum].conn
+		if n == nil || n.RemoteAddr() == nil {
+			n, err = net.Dial("tcp", c.hosts[rnum])
+			if err != nil {
+				//log.Println ( "finding a job server " + e.String() )
+				continue
+			}
+		}
+
+		_, err = n.Write(req)
+		if err != nil {
+			n.Close()
+			continue
+		}
+		cmd, cmd_len, to, err := read_header(n)
+		if err != nil || to {
+			n.Close()
+			continue
+		}
+		data := make([]byte, cmd_len)
+		_, err = io.ReadFull(n, data)
+		if err != nil {
+			n.Close()
+			continue
+		}
+
+		switch cmd {
+		case STATUS_RES:
+		default:
+			err = os.NewError(fmt.Sprintf("Bad GET_STATUS response type: %d", cmd))
+			continue
+		}
+
+		status = &Status{}
+		null := []byte{0}
+		if eor := bytes.Index(data, null); eor > 0 {
+			status.JobHandle = data[:eor]
+			if len(data) < eor+1 {
+				err = os.NewError("Truncated GET_STATUS response")
+				return
+			}
+			data = data[eor+1:]
+		}
+		if len(data) < 4 {
+			err = os.NewError("Truncated GET_STATUS response")
+			return
+		}
+		if data[0] == 49 { // "1"
+			status.Known = true
+		}
+		if data[2] == 49 { // "1"
+			status.Running = true
+		}
+		data = data[4:]
+		if eor := bytes.Index(data, null); eor > 0 {
+			status.Done, _ = strconv.Atoi(string(data[:eor]))
+			if len(data) < eor+1 {
+				err = os.NewError("Truncated GET_STATUS response")
+				return
+			}
+			data = data[eor+1:]
+		}
+		status.Total, _ = strconv.Atoi(string(data))
+
+		break
+	}
+	return
 }

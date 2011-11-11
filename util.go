@@ -1,4 +1,4 @@
-package gearman
+package goman
 
 import (
 	"os"

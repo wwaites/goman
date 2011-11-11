@@ -23,7 +23,7 @@
 
 
 
-package gearman
+package goman
 
 import (
 	"net"

@@ -1,4 +1,8 @@
-package gearman
+package goman
+
+import (
+	"os"
+)
 
 type Job struct {
 	Method string
@@ -19,11 +23,18 @@ type Client interface {
 	Work()
 
 	// For being a client:
-	Call(method string, data []byte) []byte
-	CallHighPriority(method string, data []byte) []byte
-	CallBackground(method string, data []byte) []byte
-	CallWithProgress(method string, data []byte, progress ProgressHandler) []byte
-	CallHighPriorityWithProgress(method string, data []byte, progress ProgressHandler) []byte
+	Call(method string, data []byte) ([]byte, os.Error)
+	CallHighPriority(method string, data []byte) ([]byte, os.Error)
+	CallBackground(method string, data []byte) ([]byte, os.Error)
+	CallWithProgress(method string, data []byte, progress ProgressHandler) ([]byte, os.Error)
+	CallHighPriorityWithProgress(method string, data []byte, progress ProgressHandler) ([]byte, os.Error)
+	GetStatus(jobhandle []byte) (*Status, os.Error)
+}
+
+type Status struct {
+	JobHandle []byte
+	Known, Running bool
+	Done, Total int
 }
 
 func (ij *IncomingJob) SendProgress(done int, total int) {

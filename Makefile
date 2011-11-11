@@ -1,17 +1,6 @@
-O=6
-GC=$(O)g
-LD=$(O)l
-.SUFFIXES : .go .$(O)
-
-.go.6:
-	$(GC) $<
-
-.6:
-	$(LD) -o $@ $<
-
 include $(GOROOT)/src/Make.inc
 
-TARG=danga/gearman
+TARG=github.com/wwaites/goman
 GOFILES=\
 	gearman.go\
 	client.go\
