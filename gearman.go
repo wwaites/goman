@@ -1,12 +1,18 @@
 package goman
 
 import (
+	"fmt"
 	"os"
 )
 
 type Job struct {
+	Handle []byte
 	Method string
 	Data   []byte
+}
+
+func (j Job) String() string {
+	return fmt.Sprintf("%s - %s(%s)", j.Handle, j.Method, j.Data)
 }
 
 type IncomingJob struct {
@@ -20,7 +26,7 @@ type ProgressHandler interface {
 type Client interface {
 	// For being a worker:
 	RegisterWorker(method string, handler func(job *IncomingJob) []byte)
-	Work()
+	Work() os.Error
 
 	// For being a client:
 	Call(method string, data []byte) ([]byte, os.Error)
@@ -32,9 +38,14 @@ type Client interface {
 }
 
 type Status struct {
-	JobHandle []byte
+	Handle []byte
 	Known, Running bool
 	Done, Total int
+}
+
+func (s Status) String() string {
+	return fmt.Sprintf("%s - known %b running %b done %d total %d", 
+		string(s.Handle), s.Known, s.Running, s.Done, s.Total)
 }
 
 func (ij *IncomingJob) SendProgress(done int, total int) {

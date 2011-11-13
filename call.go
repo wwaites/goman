@@ -188,7 +188,7 @@ func (c *client) GetStatus(jobhandle []byte) (status *Status, err os.Error) {
 		status = &Status{}
 		null := []byte{0}
 		if eor := bytes.Index(data, null); eor > 0 {
-			status.JobHandle = data[:eor]
+			status.Handle = data[:eor]
 			if len(data) < eor+1 {
 				err = os.NewError("Truncated GET_STATUS response")
 				return

@@ -46,15 +46,15 @@ func (c *client) RegisterWorker(method string, handler func(job *IncomingJob) []
 	c.handlers[method] = handler
 }
 
-func (c *client) Work() {
+func (c *client) Work() (err os.Error) {
 	c.id = "jfidjfid"
 	for _, v := range c.hosts {
-		n, e := net.Dial("tcp", v)
-		if e != nil {
+		n, err := net.Dial("tcp", v)
+		if err != nil {
 			continue
 		}
-		_, e = n.Write(c.client_id())
-		if e != nil {
+		_, err = n.Write(c.client_id())
+		if err != nil {
 			return
 		}
 		go c.worker_loop(n)
@@ -62,6 +62,7 @@ func (c *client) Work() {
 	for {
 		time.Sleep(1e9 * 5)
 	}
+	return
 }
 
 func (c *client) worker_loop(n net.Conn) {
@@ -151,7 +152,7 @@ func (c *client) do_work(cmd uint32, data []byte) ([]byte, bool, os.Error) {
 	if !ok {
 		return buf, true, os.NewError("this worker does not handle " + string(a[1]))
 	}
-	res := f(&IncomingJob{&Job{string(a[1]), a[2]}})
+	res := f(&IncomingJob{&Job{a[0], string(a[1]), a[2]}})
 	if res != nil && len(res) > 0 {
 		buf = append(buf, res...)
 		return buf, true, nil
